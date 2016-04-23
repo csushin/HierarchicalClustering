@@ -39,7 +39,7 @@ public class MainTestHC {
 		    "NOAA-GFDL-GFDL-ESM2M_SMHI-RCA4"
 	};
 	
-	private static String[] metricList = {"TimeMean", "TimeSkewness", "TimeKurtosis", "TimeEntropy", "TimeQuadraticScore", "TimeCV", "TimeStd", "TimeIQR"};
+	private String[] metricList = {"TimeMean", "TimeSkewness", "TimeKurtosis", "TimeEntropy", "TimeQuadraticScore", "TimeCV", "TimeStd", "TimeIQR"};
 	public String variable = "";
 	
 //	public static void main(String[] args){
