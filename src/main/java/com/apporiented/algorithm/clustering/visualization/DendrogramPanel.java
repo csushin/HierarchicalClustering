@@ -315,6 +315,7 @@ public class DendrogramPanel extends JPanel {
         String[] names = new String[] { "O1", "O2", "O3", "O4", "O5", "O6", "O7" };
         ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
         Cluster cluster = alg.performClustering(distances, names, new AverageLinkageStrategy());
+        cluster.getDistance();
         cluster.toConsole(0);
         // to compute cluster membership divergence
         // we can go through every pair of node and find the nearest cluster that contains the pair

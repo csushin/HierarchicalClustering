@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 
 import org.gdal.gdal.Band;
@@ -58,21 +59,21 @@ public class HierarchicalClusteringTotalDist {
 		public HashMap<String, File> parsers;
 		public double[] result;
 		public int width;
-		private HashMap<String, Integer> hashmap;
+		public GeotiffInfo geoinfo;
 		
-		public ComputeHCThread(int startHIndex, int endHIndex, int width, double[] result, HashMap<String, File> parsers){
+		public ComputeHCThread(int startHIndex, int endHIndex, int width, double[] result, HashMap<String, File> parsers, GeotiffInfo geoInfo){
 			this.startHIndex = startHIndex;
 			this.endHIndex = endHIndex;
 			this.width = width;
 			this.parsers = parsers;
 			this.result = result;
-			this.hashmap = new HashMap<String, Integer>();
+			this.geoinfo = geoInfo;
 		}
 		
 		@Override
 		public void run() {
 			HashMap<String, Band> bandParsers = new HashMap<String, Band>();
-			for(String key : bandParsers.keySet()){
+			for(String key : this.parsers.keySet()){
 				gdal.AllRegister();
 				Dataset hDataset = gdal.Open(parsers.get(key).getAbsolutePath(), gdalconstConstants.GA_ReadOnly);
 				if (hDataset == null)
@@ -83,8 +84,14 @@ public class HierarchicalClusteringTotalDist {
 				}
 				Band hBand = hDataset.GetRasterBand(1);
 				if(!bandParsers.containsKey(key)) bandParsers.put(key, hBand);
+				this.geoinfo.width = hDataset.getRasterXSize();
+				this.geoinfo.height = hDataset.getRasterYSize();
+				this.geoinfo.projRef = hDataset.GetProjectionRef();
+				this.geoinfo.geoInfo = hDataset.GetGeoTransform();
 			}
 			// TODO Auto-generated method stub
+			HashMap<String, String> historicalPts = new HashMap<String, String>();
+			HashMap<String, Integer> hashmap = new HashMap<String, Integer>();
 			for(int w=0; w<this.width; w++){
 				for(int h=this.startHIndex; h<this.endHIndex; h++){
 					String[] names = new String[modelList.length];
@@ -101,25 +108,33 @@ public class HierarchicalClusteringTotalDist {
 							 }
 							 else{
 								double[] temp = new double[1];
-//								Band hBand = ;
-								bandParsers.get(modelList[m]+"_"+modelList[n]).ReadRaster(w, h, 1, 1, gdalconst.GDT_Float64, temp);
+								Band hBand = bandParsers.get(modelList[m]+"_"+modelList[n]+"_OverallSum");
+								if(hBand == null)
+									System.out.println(modelList[m]+"_"+modelList[n] + ", " + w + ", " + h);
+								hBand.ReadRaster(w, h, 1, 1, gdalconst.GDT_Float64, temp);
 								dist[m][n] = temp[0];
 							 }
 						}
 					}
-					ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
-					Cluster cluster = alg.performClustering(dist, names, new AverageLinkageStrategy());
+					String testDist = Arrays.deepToString(dist);
 					String content = "";
-					for(int m=0; m<names.length-1; m++){
-					  	for(int n=m+1; n<names.length; n++){
-					  		if(dist[m][n] == 0){
-					  			cmddist[m][n] = Double.NaN;
-					  		}
-					  		else{
-					  			cmddist[m][n] = cluster.computeCMDDistance(names[m], names[n]);
-					  		}
-					  		content += cmddist[m][n] + "|";
-					  	}
+					if(historicalPts.containsKey(testDist))
+						content = historicalPts.get(testDist);
+					else{
+						ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
+						Cluster cluster = alg.performClustering(dist, names, new AverageLinkageStrategy());
+						for(int m=0; m<names.length-1; m++){
+						  	for(int n=m+1; n<names.length; n++){
+						  		if(dist[m][n] == 0){
+						  			cmddist[m][n] = Double.NaN;
+						  		}
+						  		else{
+						  			cmddist[m][n] = cluster.computeCMDDistance(names[m], names[n]);
+						  		}
+						  		content += cmddist[m][n] + "|";
+						  	}
+						}
+						historicalPts.put(testDist, content);
 					}
 					int hashId = 0;
 					if(hashmap.containsKey(content))
@@ -128,11 +143,15 @@ public class HierarchicalClusteringTotalDist {
 						hashId = hashmap.keySet().size()+1;
 						hashmap.put(content, hashId);
 					}
-					int index = (int) (h*width + w);
-					result[index] = hashId;
+					int index = (int) (h*this.width + w);
+					this.result[index] = hashId;
+//					synchronized (System.out) {
+//					    System.out.println(w + ", " + h);
+//					  }
 //					System.out.println("W is: " + w + " H is: " + h);	
 				}
 			}
+			System.out.println("Yi Er San Finished!");	
 //			save(serilization) hashmap
 			FileOutputStream fos;
 			try {
@@ -198,19 +217,20 @@ public class HierarchicalClusteringTotalDist {
 		HierarchicalClusteringTotalDist self = new HierarchicalClusteringTotalDist();
 		GeotiffInfo geoInfo = self.new GeotiffInfo();
 	    HashMap<String, File> filePath = new HashMap<String, File>();
-	    for(int i=0; i<self.modelList.length; i++){
-	    	String baseDir = "/work/asu/data/CalculationResults/pr_HIST/SimilarityResults/HierarchicalClst/TotalDistance/";
-	    	String key = self.modelList[i];
-	    	filePath = self.getAllFiles(baseDir, "_");
-    		self.loadTiffFiles(file, parsers, geoInfo);
-    		System.out.println(parsers.size() + "_Finished!");
-	    }
+//	    for(int i=0; i<self.modelList.length; i++){
+	    	String baseDir = "/work/asu/data/CalculationResults/pr_HIST/SimilarityResults/OverallSum/";
+//	    	String key = self.modelList[i];
+	    	filePath = self.getAllFiles(baseDir, "OverallSum");
+//    		self.loadTiffFiles(file, parsers, geoInfo);
+//    		System.out.println(parsers.size() + "_Finished!");
+//	    }
 	    System.out.println(parsers.size() + "_Finished!");
 	    
-	   
+	    geoInfo.width = 3600;
+	    geoInfo.height = 2640;
 		System.out.println("width: " + geoInfo.width + " height: " + geoInfo.height);
 		double[] result = new double[geoInfo.width*geoInfo.height];
-		self.computeHC(geoInfo.height, geoInfo.width, result, filePath);
+		self.computeHC(geoInfo.height, geoInfo.width, result, filePath, geoInfo);
 //		save tiff file
 		String outputfile = "/work/asu/data/CalculationResults/pr_HIST/SimilarityResults/HierarchicalClst/TotalDistance/Result.tif";
 		
@@ -225,21 +245,22 @@ public class HierarchicalClusteringTotalDist {
 		
 	}
 	
-	public void computeHC(int height, int width, double[] result, HashMap<String, File> parsers){
-		int numOfProcessors = 5;
+	public void computeHC(int height, int width, double[] result, HashMap<String, File> parsers, GeotiffInfo geoInfo){
+		int numOfProcessors = 16;
 		ComputeHCThread[] ComputeHCThreadServices = new ComputeHCThread[numOfProcessors];
 		Thread[] ComputeHCThreads = new Thread[numOfProcessors];
 		for(int i=0; i<numOfProcessors; i++){
 			int startHIndex = height/numOfProcessors*i;
 			int endHIndex = height/numOfProcessors*(i+1);
 			System.out.println(startHIndex + "," + endHIndex +","+i);
-			ComputeHCThreadServices[i] = new ComputeHCThread(startHIndex, endHIndex, width, result, parsers);
+			ComputeHCThreadServices[i] = new ComputeHCThread(startHIndex, endHIndex, width, result, parsers, geoInfo);
 			ComputeHCThreads[i] = new Thread(ComputeHCThreadServices[i]);
 			ComputeHCThreads[i].start();
 		}
 		try{
 			for(int i=0; i<numOfProcessors; i++){
 				ComputeHCThreads[i].join();
+				System.out.println(i+" is Finished!");
 			}
 		}catch(InterruptedException e){
 			e.printStackTrace();
