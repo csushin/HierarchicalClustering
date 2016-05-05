@@ -23,6 +23,9 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Rectangle2D;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 import javax.swing.*;
 
@@ -304,6 +307,7 @@ public class DendrogramPanel extends JPanel {
 //    }
 
     private static Cluster createSampleCluster() {
+    	DendrogramPanel self = new DendrogramPanel();
     	double[][] distances = new double[][] { 
     		    { 0, 1, 9, 7, 11, 14, 13 },
     		    { 1, 0, 4, 3, 8, 10, 12 }, 
@@ -313,10 +317,29 @@ public class DendrogramPanel extends JPanel {
     		    { 14, 10, 8, 13, 10, 0, 5 },
     		    { 13, 12, 10, 12, 20, 5, 0 }};
         String[] names = new String[] { "O1", "O2", "O3", "O4", "O5", "O6", "O7" };
+        double[][] distances2 = new double[][] { 
+    		    { 0, 1, 9, 7, 11, 14, 13 },
+    		    { 1, 0, 4, 3, 8, 10, 12 }, 
+    		    { 9, 4, 0, 9, 2, 8, 10 },
+    		    { 7, 3, 9, 0, 6, 13, 12 }, 
+    		    { 11, 8, 2, 6, 0, 10, 20 },
+    		    { 14, 10, 8, 13, 10, 0, 15 },
+    		    { 13, 12, 10, 12, 20, 15, 0 }};
+        String[] names2 = new String[] { "O1", "O2", "O3", "O4", "O5", "O6", "O7" };
         ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
         Cluster cluster = alg.performClustering(distances, names, new AverageLinkageStrategy());
         cluster.getDistance();
-        cluster.toConsole(0);
+        ArrayList<HashMap<String, String>> test = new ArrayList<HashMap<String, String>>();
+        test = cluster.toConsole(0, test);
+        ClusteringAlgorithm alg2 = new DefaultClusteringAlgorithm();
+        Cluster cluster2 = alg2.performClustering(distances2, names2, new AverageLinkageStrategy());
+        cluster2.getDistance();
+        test = cluster2.toConsole(0, test);
+        int minDepth = self.minDepth(cluster);
+        int maxDepth = self.maxDepth(cluster);
+        int depth = self.LocateLayerId(cluster2, "O6");
+        int depth2 = self.LocateLayerId(cluster, "O6");
+        boolean val = self.CompareNeighbors("O6", cluster, cluster2);
         // to compute cluster membership divergence
         // we can go through every pair of node and find the nearest cluster that contains the pair
         // and get the size of the cluster(in here it is the weight value)
@@ -328,6 +351,79 @@ public class DendrogramPanel extends JPanel {
         }
         return cluster;
        
+    }
+    
+    public int LocateLayerId(Cluster root, String name){
+		Cluster node = root.getLeafByName(name);
+		int depth = 1;
+		while(node.getParent()!=null){
+			depth++;
+			node = node.getParent();
+		}
+		return depth;
+	}
+	
+	
+	public boolean CompareNeighbors(String modelName, Cluster treeA, Cluster treeB){
+		Cluster nodeA = treeA.getLeafByName(modelName);
+		Cluster nodeB = treeB.getLeafByName(modelName);
+		// get neighbors
+		Cluster neighborA = getNeighbors(nodeA.getParent(), nodeA);
+		Cluster neighborB = getNeighbors(nodeB.getParent(), nodeB);
+			// compare types of leaf models
+		ArrayList<String> leafA = new ArrayList();
+		getLeaves(neighborA, leafA);
+		ArrayList<String> leafB = new ArrayList();
+		getLeaves(neighborB, leafB);
+		if(leafA.size() != leafB.size())
+			return false;
+		else{
+			for(int i=0; i<leafA.size(); i++){
+				if(!leafB.contains(leafA.get(i)))
+					return false;
+				if(!leafA.contains(leafB.get(i)))
+					return false;
+			}
+		}
+		return true;
+	}
+	
+	public Cluster getNeighbors(Cluster parent, Cluster knowns){
+		for(Cluster child : parent.getChildren()){
+			if(child.getName() != knowns.getName())
+				return child;
+		}
+		return null;
+	}
+	
+	public ArrayList<String> getLeaves(Cluster node, ArrayList<String> res){
+		if(node.isLeaf()) res.add(node.getName());
+		else{
+			for (Cluster child : node.getChildren()) {
+				getLeaves(child, res);
+	        }
+		}
+		return res;
+	}
+    
+    public int minDepth(Cluster clstr){
+    	if(clstr == null)
+    			return 0;
+    	if(clstr.getChildren().size() == 0)
+    			return 1;
+    	else{
+    		return Math.min(minDepth(clstr.getChildren().get(0)), minDepth(clstr.getChildren().get(1)))+1;
+    	}
+    }
+    
+    public int maxDepth(Cluster clstr){
+    	if(clstr == null)
+    		return 0;
+    	if(clstr.getChildren().size() == 0)
+    		return 1;
+    	else{
+    		return Math.max(maxDepth(clstr.getChildren().get(0)), maxDepth(clstr.getChildren().get(1)))+1;
+    	}
     }
 
 }

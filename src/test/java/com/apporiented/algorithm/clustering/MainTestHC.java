@@ -115,32 +115,32 @@ public class MainTestHC {
 		}
 	}
 	
-	private static Cluster createSampleCluster() {
-		double[][] distances = new double[][] { 
-			    { 0, 1, 9, 7, 11, 14, 13 },
-			    { 1, 0, 4, 3, 8, 10, 12 }, 
-			    { 9, 4, 0, 9, 2, 8, 10 },
-			    { 7, 3, 9, 0, 6, 13, 12 }, 
-			    { 11, 8, 2, 6, 0, 10, 20 },
-			    { 14, 10, 8, 13, 10, 0, 5 },
-			    { 13, 12, 10, 12, 20, 5, 0 }};
-	  String[] names = new String[] { "O1", "O2", "O3", "O4", "O5", "O6", "O7" };
-	  ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
-	  Cluster cluster = alg.performClustering(distances, names, new AverageLinkageStrategy());
-	  cluster.toConsole(0);
-	  // to compute cluster membership divergence
-	  // we can go through every pair of node and find the nearest cluster that contains the pair
-	  // and get the size of the cluster(in here it is the weight value)
-	  for(int i=0; i<names.length-1; i++){
-	  	for(int j=i+1; j<names.length; j++){
-	  		double dist = cluster.computeCMDDistance(names[i], names[j]);
-	  		System.out.println("Distance between " + names[i] + "," + names[j] + ":" + dist);
-	  	}
-	  }
-	  System.out.println("Total distance is: " + cluster.getTotalDistance());
-	  return cluster;
-	 
-	}
+//	private static Cluster createSampleCluster() {
+//		double[][] distances = new double[][] { 
+//			    { 0, 1, 9, 7, 11, 14, 13 },
+//			    { 1, 0, 4, 3, 8, 10, 12 }, 
+//			    { 9, 4, 0, 9, 2, 8, 10 },
+//			    { 7, 3, 9, 0, 6, 13, 12 }, 
+//			    { 11, 8, 2, 6, 0, 10, 20 },
+//			    { 14, 10, 8, 13, 10, 0, 5 },
+//			    { 13, 12, 10, 12, 20, 5, 0 }};
+//	  String[] names = new String[] { "O1", "O2", "O3", "O4", "O5", "O6", "O7" };
+//	  ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
+//	  Cluster cluster = alg.performClustering(distances, names, new AverageLinkageStrategy());
+//	  cluster.toConsole(0);
+//	  // to compute cluster membership divergence
+//	  // we can go through every pair of node and find the nearest cluster that contains the pair
+//	  // and get the size of the cluster(in here it is the weight value)
+//	  for(int i=0; i<names.length-1; i++){
+//	  	for(int j=i+1; j<names.length; j++){
+//	  		double dist = cluster.computeCMDDistance(names[i], names[j]);
+//	  		System.out.println("Distance between " + names[i] + "," + names[j] + ":" + dist);
+//	  	}
+//	  }
+//	  System.out.println("Total distance is: " + cluster.getTotalDistance());
+//	  return cluster;
+//	 
+//	}
 	
 	
 	public HashMap<String, TiffParser> loadTiffFiles(HashMap<String, File> filePath, String[] keyList){

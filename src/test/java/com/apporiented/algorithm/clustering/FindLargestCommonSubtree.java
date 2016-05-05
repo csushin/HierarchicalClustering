@@ -1,15 +1,16 @@
 package test.java.com.apporiented.algorithm.clustering;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
-import org.gdal.gdal.Band;
+import main.java.com.apporiented.algorithm.clustering.AverageLinkageStrategy;
+import main.java.com.apporiented.algorithm.clustering.Cluster;
+import main.java.com.apporiented.algorithm.clustering.ClusteringAlgorithm;
+import main.java.com.apporiented.algorithm.clustering.DefaultClusteringAlgorithm;
+
 import org.gdal.gdal.Band;
 import org.gdal.gdal.Dataset;
 import org.gdal.gdal.Driver;
@@ -17,12 +18,8 @@ import org.gdal.gdal.gdal;
 import org.gdal.gdalconst.gdalconst;
 import org.gdal.gdalconst.gdalconstConstants;
 
-import main.java.com.apporiented.algorithm.clustering.AverageLinkageStrategy;
-import main.java.com.apporiented.algorithm.clustering.Cluster;
-import main.java.com.apporiented.algorithm.clustering.ClusteringAlgorithm;
-import main.java.com.apporiented.algorithm.clustering.DefaultClusteringAlgorithm;
 
-public class HierarchicalClusteringTotalDist {
+public class FindLargestCommonSubtree {
 	private String[] modelList = {
 			"CCCma-CanESM2_CCCma-CanRCM4",
 		    "CCCma-CanESM2_SMHI-RCA4",
@@ -94,7 +91,7 @@ public class HierarchicalClusteringTotalDist {
 //			HashMap<String, String> historicalPts = new HashMap<String, String>();
 //			HashMap<String, Integer> hashmap = new HashMap<String, Integer>();
 			for(int h=this.startHIndex; h<this.endHIndex; h++){
-				HashMap<String, Integer> historicalPts = new HashMap<String, Integer>();
+				HashMap<String, Cluster> historicalPts = new HashMap<String, Cluster>();
 				for(int w=0; w<this.width; w++){
 					int index = (int) (h*this.width + w);
 					boolean skip = true;
@@ -124,21 +121,48 @@ public class HierarchicalClusteringTotalDist {
 						}
 					}
 					if(!skip){
-						//for computing balance
+						int similarityDegree = 18*8;//18 models for the surrounding 8 grids.
 						String key = Arrays.deepToString(dist);
-						int balance = 0;
+						Cluster centerTree = null;
 						if(historicalPts.containsKey(key)){
-							balance = historicalPts.get(key);
+							centerTree = historicalPts.get(key);
 						}
 						else{
-							ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
-							Cluster cluster = alg.performClustering(dist, names, new AverageLinkageStrategy());
-							int minDepth = minDepth(cluster);
-							int maxDepth = maxDepth(cluster);
-							balance = maxDepth - minDepth;
-							historicalPts.put(key, balance);
+							centerTree = constructTree(dist, names);
+							historicalPts.put(key, centerTree);
 						}
-						this.result[index] = balance;
+						// in this data, the exception is that valid w and h would not on the boundary. Therefore I omit the exceptional situations
+						for(int _w = w-1; _w<=w+1; _w++){
+							for(int _h = h-1; _h<=h+1; _h++){
+								if(_w!=w && _h!=h){
+									String[] _names = new String[modelList.length];
+									double[][] _dist = new double[modelList.length][modelList.length];
+									constructDistMat(_w, _h, bandParsers, _names, _dist);
+									String _key = Arrays.deepToString(_dist);
+									Cluster surroundingTree = null;
+									if(historicalPts.containsKey(_key)){
+										surroundingTree = historicalPts.get(_key);
+									}
+									else{
+										surroundingTree = constructTree(_dist, _names);
+										historicalPts.put(key, surroundingTree);
+									}
+									for(int m=0; m<18 && similarityDegree>0; m++){
+										String model = "O"+m;
+										if(LocateLayerId(centerTree, model) != LocateLayerId(surroundingTree, model))
+											similarityDegree--;
+										else{
+											if(!CompareNeighbors(model, centerTree, surroundingTree))
+												similarityDegree--;
+										}
+									}
+								}
+							}
+						}
+						this.result[index] = similarityDegree/8.0;//get the average similarity to the surrounding grids.
+//						System.out.println( w + " is Finihsed.");
+						// for saving hashmap
+						
 					}
 					else{
 						this.result[index] = Double.NaN;
@@ -146,28 +170,93 @@ public class HierarchicalClusteringTotalDist {
 				}
 				System.out.println( h + " is Finihsed.");
 			}
-//			System.out.println(this.startHIndex + " Yi Er San Finished!");	
-////			save(serilization) hashmap
-//			FileOutputStream fos;
-//			try {
-//				fos = new FileOutputStream("/work/asu/data/CalculationResults/pr_HIST/SimilarityResults/HierarchicalClst/TotalDistance/hash-" + 
-//								this.startHIndex + "-" + this.endHIndex + ".ser");
-//				ObjectOutputStream oos = new ObjectOutputStream(fos);
-//				oos.writeObject(hashmap);
-//				oos.close();
-//				fos.close();
-//				System.out.println("Hash Map is Saved!");	
-//			} catch (FileNotFoundException e) {
-//				// TODO Auto-generated catch block
-//				e.printStackTrace();
-//			} catch (IOException e) {
-//				// TODO Auto-generated catch block
-//				e.printStackTrace();
-//			}
 		}
 		
 	}
 	
+	
+	public int LocateLayerId(Cluster root, String name){
+		Cluster node = root.getLeafByName(name);
+		int depth = 1;
+		while(node.getParent()!=null){
+			depth++;
+			node = node.getParent();
+		}
+		return depth;
+	}
+	
+	
+	public boolean CompareNeighbors(String modelName, Cluster treeA, Cluster treeB){
+		Cluster nodeA = treeA.getLeafByName(modelName);
+		Cluster nodeB = treeB.getLeafByName(modelName);
+		// get neighbors
+		Cluster neighborA = getNeighbors(nodeA.getParent(), nodeA);
+		Cluster neighborB = getNeighbors(nodeB.getParent(), nodeB);
+			// compare types of leaf models
+		ArrayList<String> leafA = new ArrayList();
+		getLeaves(neighborA, leafA);
+		ArrayList<String> leafB = new ArrayList();
+		getLeaves(neighborB, leafB);
+		if(leafA.size() != leafB.size())
+			return false;
+		else{
+			for(int i=0; i<leafA.size(); i++){
+				if(!leafB.contains(leafA.get(i)))
+					return false;
+				if(!leafA.contains(leafB.get(i)))
+					return false;
+			}
+		}
+		return true;
+	}
+	
+	public Cluster getNeighbors(Cluster parent, Cluster knowns){
+		for(Cluster child : parent.getChildren()){
+			if(child.getName() != knowns.getName())
+				return child;
+		}
+		return null;
+	}
+	
+	public ArrayList<String> getLeaves(Cluster node, ArrayList<String> res){
+		if(node.isLeaf()) res.add(node.getName());
+		else{
+			for (Cluster child : node.getChildren()) {
+				getLeaves(child, res);
+	        }
+		}
+		return res;
+	}
+	
+	public void constructDistMat(int w, int h, HashMap<String, Band> bandParsers, String[] names, double[][] dist){
+		for(int m=0; m<modelList.length; m++){
+			names[m] = "O"+m;
+			for(int n=0; n<modelList.length; n++){
+				 if(n==m){
+					 dist[m][n] = 0;
+				 }
+				 else if(n<m){
+					 dist[m][n] = dist[n][m];
+				 }
+				 else{
+					double[] temp = new double[1];
+					Band hBand = bandParsers.get(modelList[m]+"_"+modelList[n]+"_OverallSum");
+					if(hBand == null)
+						System.out.println(modelList[m]+"_"+modelList[n] + ", " + w + ", " + h);
+					hBand.ReadRaster(w, h, 1, 1, gdalconst.GDT_Float64, temp);
+					if(!Double.isNaN(temp[0])){
+						dist[m][n] = temp[0];
+					}
+				 }
+			}
+		}
+	}
+	
+	public Cluster constructTree(double[][] dist, String[] names){
+		ClusteringAlgorithm alg = new DefaultClusteringAlgorithm();
+		Cluster cluster = alg.performClustering(dist, names, new AverageLinkageStrategy());
+		return cluster;
+	}
 	
 	public class LoadTiffsBand implements Runnable{
 		private File file; 
@@ -205,61 +294,34 @@ public class HierarchicalClusteringTotalDist {
 		}
 	}
 	
-//	public static void main(String[] args){
-//		HashMap<String, Band> parsers = new HashMap<String, Band>();
-//		HierarchicalClusteringTotalDist self = new HierarchicalClusteringTotalDist();
-//		GeotiffInfo geoInfo = self.new GeotiffInfo();
-//	    HashMap<String, File> filePath = new HashMap<String, File>();
-////	    for(int i=0; i<self.modelList.length; i++){
-//	    	String baseDir = "/work/asu/data/CalculationResults/pr_HIST/SimilarityResults/OverallSum/";
-////	    	String key = self.modelList[i];
-//	    	filePath = self.getAllFiles(baseDir, "OverallSum");
-////    		self.loadTiffFiles(file, parsers, geoInfo);
-////    		System.out.println(parsers.size() + "_Finished!");
-////	    }
-//	    System.out.println(parsers.size() + "_Finished!");
-//	    
-//	    geoInfo.width = 3600;
-//	    geoInfo.height = 2640;
-//		System.out.println("width: " + geoInfo.width + " height: " + geoInfo.height);
-//		double[] result = new double[geoInfo.width*geoInfo.height];
-//		self.computeHC(geoInfo.height, geoInfo.width, result, filePath, geoInfo);
-////		save tiff file
-//		String outputfile = "/work/asu/data/CalculationResults/pr_HIST/SimilarityResults/HierarchicalClst/TotalDistance/Result.tif";
-//		
-//		Driver driver = gdal.GetDriverByName("GTiff");
-//		Dataset dst_ds = driver.Create(outputfile, geoInfo.width, geoInfo.height, 1, gdalconst.GDT_Float32);
-//		dst_ds.SetGeoTransform(geoInfo.geoInfo);
-//		dst_ds.SetProjection(geoInfo.projRef);
-//		int writingResult = dst_ds.GetRasterBand(1).WriteRaster(0, 0, geoInfo.width, geoInfo.height, result);
-//		dst_ds.FlushCache();
-//		dst_ds.delete();
-//		System.out.println("Writing geotiff result is: " + writingResult);	
-//		
-//	}
+	public static void main(String[] args){
+		HashMap<String, Band> parsers = new HashMap<String, Band>();
+		FindLargestCommonSubtree self = new FindLargestCommonSubtree();
+		GeotiffInfo geoInfo = self.new GeotiffInfo();
+	    HashMap<String, File> filePath = new HashMap<String, File>();
+	    String baseDir = "/work/asu/data/CalculationResults/tasmin_HIST/SimilarityResults/OverallSum/";
+	    filePath = self.getAllFiles(baseDir, "OverallSum");
+	    System.out.println(parsers.size() + "_Finished!");
+	    
+	    geoInfo.width = 3600;
+	    geoInfo.height = 2640;
+		System.out.println("width: " + geoInfo.width + " height: " + geoInfo.height);
+		double[] result = new double[geoInfo.width*geoInfo.height];
+		self.computeHC(geoInfo.height, geoInfo.width, result, filePath, geoInfo);
+//		save tiff file
+		String outputfile = "/work/asu/data/CalculationResults/tasmin_HIST/SimilarityResults/HierarchicalClst/TotalDistance/Similarity.tif";
+		
+		Driver driver = gdal.GetDriverByName("GTiff");
+		Dataset dst_ds = driver.Create(outputfile, geoInfo.width, geoInfo.height, 1, gdalconst.GDT_Float32);
+		dst_ds.SetGeoTransform(geoInfo.geoInfo);
+		dst_ds.SetProjection(geoInfo.projRef);
+		int writingResult = dst_ds.GetRasterBand(1).WriteRaster(0, 0, geoInfo.width, geoInfo.height, result);
+		dst_ds.FlushCache();
+		dst_ds.delete();
+		System.out.println("Writing geotiff result is: " + writingResult);	
+		
+	}
 	
-	public int minDepth(Cluster clstr){
-    	if(clstr == null)
-    			return 0;
-    	if(clstr.getChildren().size() == 0)
-    			return 1;
-    	else{
-    		return Math.min(minDepth(clstr.getChildren().get(0)), minDepth(clstr.getChildren().get(1)))+1;
-    	}
-    }
-    
-    public int maxDepth(Cluster clstr){
-    	if(clstr == null)
-    		return 0;
-    	if(clstr.getChildren().size() == 0)
-    		return 1;
-    	else{
-    		return Math.max(maxDepth(clstr.getChildren().get(0)), maxDepth(clstr.getChildren().get(1)))+1;
-    	}
-    }
-	
-//    public boolean isSameTree(Cluster clstr)
-    
 	public void computeHC(int height, int width, double[] result, HashMap<String, File> parsers, GeotiffInfo geoInfo){
 		int numOfProcessors = 1;
 		ComputeHCThread[] ComputeHCThreadServices = new ComputeHCThread[numOfProcessors];
@@ -318,5 +380,4 @@ public class HierarchicalClusteringTotalDist {
 			    if(result.size()==0) System.out.println("Cannot find the given file: " + keyword);
 			    return result;
 	}
-	
 }
